@@ -2,8 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -12,9 +17,12 @@ import (
 )
 
 var (
-	brokers             = []string{"127.0.0.1:9092"}
-	topic   goka.Stream = "user-click"
-	group   goka.Group  = "mini-group"
+	brokers               = []string{"127.0.0.1:9092"}
+	topic     goka.Stream = "user-click"
+	group     goka.Group  = "mini-group"
+	emitter               = flag.Bool("emitter", false, "start the emitter")
+	processor             = flag.Bool("processor", false, "start the processor")
+	view                  = flag.Bool("view", false, "start the view")
 )
 
 // A user is the object that is stored in the processor's group table
@@ -63,7 +71,10 @@ func runEmitter() {
 	for range t.C {
 		key := fmt.Sprintf("user-%d", i%10)
 		value := fmt.Sprintf("%s", time.Now())
-		emitter.EmitSync(key, value)
+		err := emitter.EmitSync(key, value)
+		if err != nil {
+			log.Fatalf("Error emitting: %v", err)
+		}
 		i++
 	}
 }
@@ -107,7 +118,14 @@ func runView() {
 	if err != nil {
 		panic(err)
 	}
-	go view.Start()
+	go func() {
+		err = view.Start()
+		if err != nil {
+			panic(err)
+		} else {
+			fmt.Println("View stopped without errors")
+		}
+	}()
 	defer view.Stop()
 
 	root := mux.NewRouter()
@@ -121,7 +139,18 @@ func runView() {
 }
 
 func main() {
-	go runEmitter()
-	go runProcessor()
-	runView()
+	flag.Parse()
+	if *emitter {
+		go runEmitter()
+	}
+	if *processor {
+		go runProcessor()
+	}
+	if *view {
+		go runView()
+	}
+
+	wait := make(chan os.Signal, 1)
+	signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
+	<-wait // wait for SIGINT/SIGTERM
 }

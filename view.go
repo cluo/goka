@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"sync"
 
 	"github.com/lovoo/goka/kafka"
@@ -133,12 +134,15 @@ func (v *View) createPartitions(brokers []string) (err error) {
 
 // Start starts consuming the view's topic.
 func (v *View) Start() error {
+	log.Println("before-run")
 	go v.run()
+	log.Println("after-run (I mean not after, because it's a goroutine, but after it has been kicked off)")
 
 	var wg sync.WaitGroup
 	wg.Add(len(v.partitions))
 	for id, p := range v.partitions {
 		go func(id int32, p *partition) {
+			fmt.Println("starting goroutine for partition", id)
 			defer wg.Done()
 			err := p.startCatchup()
 			if err != nil {
@@ -147,7 +151,9 @@ func (v *View) Start() error {
 			}
 		}(int32(id), p)
 	}
+	log.Println("waiting for all partitions")
 	wg.Wait()
+	log.Println("waiting for all partitions")
 
 	<-v.dead
 	if v.errors.hasErrors() {
@@ -157,6 +163,7 @@ func (v *View) Start() error {
 }
 
 func (v *View) fail(err error) {
+	log.Println("view failed with error", err)
 	v.errors.collect(err)
 	go v.stop()
 }
@@ -174,11 +181,15 @@ func (v *View) stop() {
 		for _, par := range v.partitions {
 			wg.Add(1)
 			go func(p *partition) {
+				log.Println("stopping partition")
 				p.stop()
+				log.Println("stopping done")
 				wg.Done()
 			}(par)
 		}
+		log.Println("Waiting until all goroutines are stopped")
 		wg.Wait()
+		log.Println("all gorutines are stopped")
 	})
 }
 

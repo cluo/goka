@@ -2,6 +2,8 @@ package kafka
 
 import (
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/Shopify/sarama"
 	cluster "github.com/bsm/sarama-cluster"
@@ -20,6 +22,9 @@ func CreateDefaultKafkaConfig(clientID string, initialOffset int64, registry met
 	config.Consumer.Return.Errors = true
 	config.Consumer.Offsets.Initial = initialOffset
 	config.Consumer.MaxProcessingTime = defaultMaxProcessingTime
+
+	config.Net.ReadTimeout = 10 * time.Second
+	config.Group.Session.Timeout = 10 * time.Second
 
 	// producer configuration
 	config.Producer.RequiredAcks = sarama.WaitForLocal
@@ -67,8 +72,11 @@ func newGroupConsumer(brokers []string, group string, events chan Event, config 
 }
 
 func (c *groupConsumer) Close() error {
+	log.Println("group consumer: closing")
 	close(c.stop)
+	log.Println("group consumer: wait for done-channel")
 	<-c.done
+	log.Println("group consumer: closing...")
 	if err := c.consumer.Close(); err != nil {
 		return fmt.Errorf("Failed to close consumer: %v", err)
 	}

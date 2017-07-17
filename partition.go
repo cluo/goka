@@ -29,6 +29,8 @@ const (
 	defaultPartitionChannelSize = 10
 	syncInterval                = 30 * time.Second
 	stalledTimeout              = 2 * time.Minute
+
+	partitionCloseTimeout = 10 * time.Second
 )
 
 const (
@@ -149,7 +151,11 @@ func (p *partition) startCatchup() error {
 func (p *partition) stop() {
 	atomic.StoreInt64(&p.stopFlag, 1)
 	close(p.dying)
-	<-p.done
+	select {
+	case <-p.done:
+	case <-time.NewTimer(partitionCloseTimeout).C:
+		p.log.Printf("Error closing partition: timeout after %d seconds", partitionCloseTimeout/time.Second)
+	}
 	close(p.ch)
 }
 
@@ -225,6 +231,7 @@ func (p *partition) run() error {
 			p.st.Sync()
 
 		case <-p.dying:
+			p.log.Printf("Partition dying. Stopping the partition run function...")
 			return nil
 		}
 

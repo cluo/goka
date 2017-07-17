@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -302,10 +303,16 @@ func (g *Processor) Start() error {
 		close(g.done)
 		return &g.errors
 	}
+	log.Println("Pre-Run")
 	g.run()
+	log.Println("post-Run")
 
 	close(g.done)
+	//g.Stop()
+
+	log.Println("waiting for dead-channel")
 	<-g.dead // wait for stop goroutine to return from stop() call
+	log.Println("it's dead")
 	if g.errors.hasErrors() {
 		return &g.errors
 	}
@@ -341,8 +348,8 @@ func (g *Processor) pushToPartitionView(topic string, part int32, ev kafka.Event
 }
 
 func (g *Processor) run() {
-	g.opts.log.Printf("Processor: started")
-	defer g.opts.log.Printf("Processor: stopped")
+	g.opts.log.Printf("Processor: run started")
+	defer g.opts.log.Printf("Processor: run terminated")
 
 	for ev := range g.consumer.Events() {
 		switch ev := ev.(type) {
@@ -397,6 +404,7 @@ func (g *Processor) run() {
 			}
 
 		case *kafka.Error:
+			log.Println("processor received error:", ev.Err)
 			g.fail(ev.Err)
 			return
 		default:
@@ -413,12 +421,21 @@ func (g *Processor) fail(err error) {
 }
 
 func (g *Processor) stop() {
+	log.Println("Processor stop requested")
 	g.stopOnce.Do(func() {
+		log.Println("...stopping started")
+		defer log.Println("...stopping done")
 		close(g.dying) // stops any blocking call
+		// release Start() goroutine
+		defer close(g.dead)
+		log.Println("Closing consumer")
 		err := g.consumer.Close()
+		log.Println("consumer closing done")
 
 		g.opts.log.Printf("Processor: wait for main goroutine")
 		<-g.done
+		g.opts.log.Printf("Processor: main goroutine finished")
+
 		if err != nil {
 			g.errors.collect(fmt.Errorf("Failed to close consumer: %v", err))
 		}
@@ -438,9 +455,6 @@ func (g *Processor) stop() {
 		if err := g.producer.Close(); err != nil {
 			g.errors.collect(fmt.Errorf("Failed to close producer: %v", err))
 		}
-
-		// release Start() goroutine
-		close(g.dead)
 	})
 }
 

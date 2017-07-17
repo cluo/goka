@@ -1,11 +1,17 @@
 package kafka
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/lovoo/goka/logger"
 	metrics "github.com/rcrowley/go-metrics"
+)
+
+const (
+	producerCloseTimeout = 10 * time.Second
 )
 
 // Producer abstracts the kafka producer
@@ -46,8 +52,25 @@ func NewProducer(brokers []string, registry metrics.Registry, log logger.Logger)
 
 func (p *producer) Close() error {
 	close(p.stop)
-	err := p.producer.Close()
-	<-p.done
+	var (
+		closeDone = make(chan bool, 0)
+		err       error
+	)
+
+	go func() {
+		defer close(closeDone)
+		err = p.producer.Close()
+	}()
+
+	select {
+	case <-p.done:
+		return err
+	case <-closeDone:
+		return err
+	case <-time.NewTimer(producerCloseTimeout).C:
+		return errors.New("Error closing producer: timeout")
+	}
+
 	return err
 }
 

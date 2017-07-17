@@ -126,7 +126,7 @@ func (ctx *context) emit(topic string, key string, value []byte) {
 func (ctx *context) Value() interface{} {
 	val, err := ctx.valueForKey(string(ctx.msg.Key))
 	if err != nil {
-		ctx.Fail(err)
+		ctx.Fail(fmt.Errorf("Error getting value for key %s: %v", ctx.msg.Key, err))
 	}
 	return val
 }
@@ -134,7 +134,7 @@ func (ctx *context) Value() interface{} {
 // SetValue updates the value of the key in the group table.
 func (ctx *context) SetValue(value interface{}) {
 	if err := ctx.setValueForKey(string(ctx.msg.Key), value); err != nil {
-		ctx.Fail(err)
+		ctx.Fail(fmt.Errorf("Error setting value for key %s: %v", ctx.msg.Key, err))
 	}
 }
 

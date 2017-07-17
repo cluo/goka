@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -18,6 +19,8 @@ const (
 	defaultFlushFrequency     = 100 * time.Millisecond
 	defaultFlushBytes         = 64 * 1024
 	defaultProducerMaxRetries = 10
+
+	consumerCloseTimeout = 10 * time.Second
 )
 
 const (
@@ -75,8 +78,32 @@ func (c *saramaConsumer) Close() error {
 	// we want to close the events-channel regardless of any errors closing
 	// the consumers
 	defer close(c.events)
-	err1 := c.simpleConsumer.Close()
-	err2 := c.groupConsumer.Close()
+
+	var (
+		done1 = make(chan bool, 0)
+		done2 = make(chan bool, 0)
+		err1  error
+		err2  error
+	)
+	go func() {
+		defer close(done1)
+		err1 = c.simpleConsumer.Close()
+
+	}()
+
+	go func() {
+		defer close(done2)
+		err2 = c.groupConsumer.Close()
+
+	}()
+
+	select {
+	case <-done1:
+	case <-done2:
+	case <-time.NewTimer(consumerCloseTimeout).C:
+		return errors.New("Error closing sarama consumer: timeout")
+	}
+
 	if err1 != nil {
 		return err1
 	}
