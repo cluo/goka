@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 
+	"github.com/syndtr/goleveldb/leveldb"
 	ldbiter "github.com/syndtr/goleveldb/leveldb/iterator"
 )
 
@@ -11,6 +12,7 @@ import (
 type iterator struct {
 	iter  ldbiter.Iterator
 	codec Codec
+	snap  *leveldb.Snapshot
 }
 
 func (i *iterator) Next() bool {
@@ -42,4 +44,5 @@ func (i *iterator) Value() (interface{}, error) {
 
 func (i *iterator) Release() {
 	i.iter.Release()
+	i.snap.Release()
 }
